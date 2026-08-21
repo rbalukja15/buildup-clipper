@@ -1,0 +1,20 @@
+# Handoff mode (M4): one service, everything local. Videos never leave the machine.
+services:
+  clipper:
+    build: .
+    container_name: buildup-clipper
+    ports:
+      - "8000:8000"
+    volumes:
+      # Drop match files into ./data/videos/source and they are selectable in the UI.
+      - ./data/videos:/data/videos
+      - ./data/db:/data/db
+    environment:
+      # Deliverable normalization -- every segment is encoded to these.
+      BUC_EXPORT_WIDTH: "1280"
+      BUC_EXPORT_HEIGHT: "720"
+      BUC_EXPORT_FPS: "30"
+      # Default tag window around the G keystroke (assumption to validate).
+      BUC_TAG_PAD_BEFORE: "3"
+      BUC_TAG_PAD_AFTER: "27"
+    restart: unless-stopped
