@@ -141,8 +141,9 @@ All env vars, all optional:
 ```bash
 cd backend
 ./.venv/bin/pip install -r requirements-dev.txt
-./.venv/bin/python -m pytest              # 43 fast tests, ffmpeg stubbed out
-./.venv/bin/python -m pytest tests/test_integration.py   # real ffmpeg, ~30s
+./.venv/bin/python -m pytest              # all 47
+./.venv/bin/python -m pytest --ignore=tests/test_integration.py   # 45 fast, ffmpeg stubbed
+./.venv/bin/python -m pytest tests/test_integration.py            # 2 real-ffmpeg, ~30s
 ```
 
 The fast suite stubs ffmpeg, so it runs anywhere; the encoding strategy itself is
@@ -172,8 +173,25 @@ without dropping frames.
 3. **Tagging while watching at 1.5–2× fits how the analyst works.** Worth
    testing on one real match before any UI polish.
 
+## Keeping YouTube ingest working
+
+`yt-dlp` is deliberately **not** pinned (`yt-dlp>=…` in `backend/requirements.txt`).
+YouTube changes its player regularly and an aging yt-dlp stops being able to
+extract video — the symptom is an ingest that fails with "Failed to extract any
+player response". The fix is always the same: get a newer yt-dlp.
+
+```bash
+docker compose build --no-cache clipper && docker compose up -d   # packaged
+./.venv/bin/pip install -U yt-dlp                                 # dev mode
+```
+
+Local-file sources are unaffected by this.
+
 ## Notes
 
 - The browser needs H.264 support to play the proxy — Chrome, Edge, and Firefox
   are fine. A bare open-source Chromium build may not be.
 - `data/` is gitignored: videos and the database never belong in the repo.
+- On Linux hosts the container runs as root, so files under `./data` end up
+  root-owned. On Windows and macOS Docker Desktop maps ownership to your user,
+  so this only matters if you run the container on a Linux box.
