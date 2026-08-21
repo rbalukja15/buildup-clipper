@@ -1,0 +1,21 @@
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# app data -- videos and database never belong in git
+data/
+*.sqlite3
+*.sqlite3-*
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/
