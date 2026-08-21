@@ -49,18 +49,26 @@ async def create_tag(match_id: int, payload: TagCreate) -> dict:
         if t_end <= t_start:
             raise HTTPException(status_code=400, detail="tag window is empty")
 
-        cur = conn.execute(
-            "INSERT INTO tag (match_id, t_start, t_end, category, source, note) VALUES (?, ?, ?, ?, ?, ?)",
-            (match_id, t_start, t_end, payload.category, payload.source, payload.note),
-        )
-        tag_id = int(cur.lastrowid)
-        next_index = conn.execute(
-            "SELECT COALESCE(MAX(c.order_index), -1) + 1 FROM clip c JOIN tag t ON t.id = c.tag_id WHERE t.match_id = ?",
-            (match_id,),
-        ).fetchone()[0]
-        clip_id = int(conn.execute(
-            "INSERT INTO clip (tag_id, order_index) VALUES (?, ?)", (tag_id, next_index)
-        ).lastrowid)
+        # A tag without its clip would be invisible in review, so the pair is
+        # written atomically.
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            tag_id = int(conn.execute(
+                "INSERT INTO tag (match_id, t_start, t_end, category, source, note) VALUES (?, ?, ?, ?, ?, ?)",
+                (match_id, t_start, t_end, payload.category, payload.source, payload.note),
+            ).lastrowid)
+            next_index = conn.execute(
+                "SELECT COALESCE(MAX(c.order_index), -1) + 1 FROM clip c "
+                "JOIN tag t ON t.id = c.tag_id WHERE t.match_id = ?",
+                (match_id,),
+            ).fetchone()[0]
+            clip_id = int(conn.execute(
+                "INSERT INTO clip (tag_id, order_index) VALUES (?, ?)", (tag_id, next_index)
+            ).lastrowid)
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("COMMIT")
 
     await enqueue_clip_render(clip_id, f"clip {clip_id}")
     await notify("tag", tag_id)
