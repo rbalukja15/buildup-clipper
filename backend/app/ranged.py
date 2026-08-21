@@ -11,13 +11,15 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from starlette.requests import Request
-from starlette.responses import FileResponse, StreamingResponse
+from starlette.responses import FileResponse, Response, StreamingResponse
 
 _RANGE = re.compile(r"bytes=(\d*)-(\d*)")
 CHUNK = 1024 * 512
 
 
-def serve_media(path: Path, request: Request, download_name: str | None = None) -> StreamingResponse | FileResponse:
+def serve_media(
+    path: Path, request: Request, download_name: str | None = None
+) -> StreamingResponse | FileResponse | Response:
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"file not found: {path.name}")
 
@@ -26,6 +28,15 @@ def serve_media(path: Path, request: Request, download_name: str | None = None) 
     headers = {"accept-ranges": "bytes", "cache-control": "no-cache"}
     if download_name:
         headers["content-disposition"] = f'attachment; filename="{download_name}"'
+
+    if request.method == "HEAD":
+        # Video players and route prefetchers probe with HEAD before fetching;
+        # answering with the headers alone is the whole point of the method.
+        return Response(
+            status_code=200,
+            media_type=media_type,
+            headers={**headers, "content-length": str(size)},
+        )
 
     range_header = request.headers.get("range")
     match = _RANGE.fullmatch(range_header.strip()) if range_header else None

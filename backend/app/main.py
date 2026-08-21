@@ -77,7 +77,7 @@ def _mount_frontend(app: FastAPI) -> None:
 
     app.mount("/_next", StaticFiles(directory=frontend / "_next"), name="next-assets")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def spa(full_path: str):
         """Serve the static export, falling back to its index for client routes."""
         candidate = (frontend / full_path).resolve()

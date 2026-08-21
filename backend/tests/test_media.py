@@ -65,3 +65,30 @@ def test_media_outside_the_data_directory_is_refused(client, source_video, tmp_p
         conn.execute("UPDATE match SET proxy_path = ? WHERE id = ?", (str(secret), match["id"]))
 
     assert client.get(f"/api/media/proxy/{match['id']}").status_code == 403
+
+
+def test_head_requests_are_answered_with_headers_only(client, source_video):
+    """Video players probe with HEAD before streaming, and Next's Link prefetch
+    uses it for routes -- a 405 there shows up as console noise and dead
+    prefetches."""
+    match = make_match(client, source_video)
+    size = Path(match["proxy_path"]).stat().st_size
+
+    head = client.head(f"/api/media/proxy/{match['id']}")
+    assert head.status_code == 200
+    assert head.headers["accept-ranges"] == "bytes"
+    assert head.headers["content-length"] == str(size)
+    assert head.content == b""
+
+
+def test_head_on_an_export_download(client, source_video):
+    match = make_match(client, source_video)
+    clip_id = client.post(f"/api/matches/{match['id']}/tags", json={"t": 600.0}).json()["clip_id"]
+    wait_for_jobs(client)
+    client.patch(f"/api/clips/{clip_id}", json={"status": "approved"})
+    export = client.post("/api/exports", json={"name": "head check", "match_id": match["id"]}).json()
+    wait_for_jobs(client)
+
+    head = client.head(f"/api/exports/{export['id']}/download")
+    assert head.status_code == 200
+    assert "attachment" in head.headers["content-disposition"]

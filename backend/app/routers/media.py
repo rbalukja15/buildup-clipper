@@ -28,7 +28,7 @@ def _guard(path_str: str | None, what: str) -> Path:
     return path
 
 
-@router.get("/proxy/{match_id}")
+@router.api_route("/proxy/{match_id}", methods=["GET", "HEAD"])
 def proxy(match_id: int, request: Request):
     with connect() as conn:
         row = conn.execute("SELECT proxy_path FROM match WHERE id = ?", (match_id,)).fetchone()
@@ -37,7 +37,7 @@ def proxy(match_id: int, request: Request):
     return serve_media(_guard(row["proxy_path"], "proxy"), request)
 
 
-@router.get("/clip/{clip_id}")
+@router.api_route("/clip/{clip_id}", methods=["GET", "HEAD"])
 def clip(clip_id: int, request: Request):
     with connect() as conn:
         row = conn.execute("SELECT review_path FROM clip WHERE id = ?", (clip_id,)).fetchone()

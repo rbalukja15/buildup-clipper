@@ -105,7 +105,7 @@ async def rerender_export(export_id: int) -> dict:
     return {"ok": True}
 
 
-@router.get("/{export_id}/download")
+@router.api_route("/{export_id}/download", methods=["GET", "HEAD"])
 def download_export(export_id: int, request: Request):
     row = _export(export_id)
     if not row["file_path"]:
