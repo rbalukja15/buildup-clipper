@@ -29,10 +29,12 @@ function TagStudio() {
   const [match] = useLiveData<Match | null>(
     () => (matchId ? api.match(matchId) : Promise.resolve(null)),
     null,
+    [matchId],
   );
   const [tags, setTags] = useLiveData<Tag[]>(
     () => (matchId ? api.tags(matchId) : Promise.resolve([])),
     [],
+    [matchId],
   );
 
   const video = useRef<HTMLVideoElement>(null);
@@ -143,6 +145,9 @@ function TagStudio() {
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return; // never hijack note editing
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return; // never hijack browser/OS chords (Cmd+U, Ctrl+A, ...)
       }
       const key = event.key.toLowerCase();
 

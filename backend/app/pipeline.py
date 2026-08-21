@@ -13,8 +13,23 @@ from .config import get_settings
 from .db import connect
 from .jobs import Job, notify, queue
 from .media import ffmpeg, ytdlp
+from .paths import is_within
 
 log = logging.getLogger("buc.pipeline")
+
+
+def export_fingerprint(settings) -> str:
+    """Identifies the encode settings a final segment was produced with.
+
+    Segments are concat-demuxed with -c copy, so every one of them must have
+    been encoded with the same parameters. Reusing a segment built under
+    different settings produces a file whose header disagrees with half its
+    frames -- ffmpeg exits 0 and playback breaks at the join.
+    """
+    return (
+        f"{settings.export_width}x{settings.export_height}"
+        f"@{settings.export_fps}/crf{settings.export_crf}/{settings.export_preset}"
+    )
 
 
 def _slug(text: str, fallback: str = "export") -> str:
@@ -167,8 +182,8 @@ def invalidate_clip(clip_id: int) -> None:
             if row[key]:
                 _safe_unlink(Path(row[key]), settings)
         conn.execute(
-            "UPDATE clip SET review_path = NULL, final_path = NULL, render_state = 'pending', "
-            "render_error = NULL WHERE id = ?",
+            "UPDATE clip SET review_path = NULL, final_path = NULL, final_params = NULL, "
+            "render_state = 'pending', render_error = NULL WHERE id = ?",
             (clip_id,),
         )
 
@@ -179,20 +194,12 @@ def _safe_unlink(path: Path, settings) -> None:
         resolved = path.resolve()
     except OSError:
         return
-    if not any(_is_within(resolved, root) for root in (settings.clip_dir, settings.export_dir, settings.work_dir)):
+    if not any(is_within(resolved, root) for root in (settings.clip_dir, settings.export_dir, settings.work_dir)):
         return
     try:
         resolved.unlink(missing_ok=True)
     except OSError:
         log.warning("could not delete %s", resolved)
-
-
-def _is_within(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root.resolve())
-    except ValueError:
-        return False
-    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -207,7 +214,7 @@ async def render_export(job: Job) -> None:
         export = conn.execute("SELECT * FROM export WHERE id = ?", (export_id,)).fetchone()
         members = conn.execute(
             """
-            SELECT c.id AS clip_id, c.final_path, t.t_start, t.t_end,
+            SELECT c.id AS clip_id, c.final_path, c.final_params, t.t_start, t.t_end,
                    m.file_path, m.proxy_path, ec.position
             FROM export_clip ec
             JOIN clip c ON c.id = ec.clip_id
@@ -220,16 +227,25 @@ async def render_export(job: Job) -> None:
         ).fetchall()
     if export is None:
         raise RuntimeError(f"export {export_id} disappeared")
-    if not members:
-        raise RuntimeError("export has no clips")
 
     try:
         with connect() as conn:
             conn.execute("UPDATE export SET state = 'rendering', error = NULL WHERE id = ?", (export_id,))
         await notify("export", export_id)
 
+        if not members:
+            # Its clips were deleted out from under it (a match delete cascades
+            # this far). Drop the stale file too -- it must stop being
+            # downloadable, since it no longer matches what the export claims.
+            with connect() as conn:
+                conn.execute("UPDATE export SET file_path = NULL WHERE id = ?", (export_id,))
+            if export["file_path"]:
+                _safe_unlink(Path(export["file_path"]), settings)
+            raise RuntimeError("export has no clips")
+
         segments: list[Path] = []
         total = len(members)
+        fingerprint = export_fingerprint(settings)
         for i, m in enumerate(members):
             # Segments come from the ORIGINAL source, not the 480p proxy --
             # the proxy exists for scrubbing, the deliverable must not inherit it.
@@ -237,7 +253,12 @@ async def render_export(job: Job) -> None:
             if not src.exists():
                 raise ffmpeg.MediaError(f"original source missing for clip {m['clip_id']}: {src}")
             seg = settings.clip_dir / f"clip_{m['clip_id']}_final.mp4"
-            if not (m["final_path"] and Path(m["final_path"]).exists()):
+            reusable = (
+                m["final_path"]
+                and Path(m["final_path"]).exists()
+                and m["final_params"] == fingerprint
+            )
+            if not reusable:
                 job.label = f"Encoding clip {i + 1}/{total}"
                 await ffmpeg.run_ffmpeg(
                     ffmpeg.export_segment_cmd(src, seg, m["t_start"], m["t_end"], settings),
@@ -245,7 +266,10 @@ async def render_export(job: Job) -> None:
                     on_progress=lambda p, i=i: job.set_progress((i + p) / (total + 1)),
                 )
                 with connect() as conn:
-                    conn.execute("UPDATE clip SET final_path = ? WHERE id = ?", (str(seg), m["clip_id"]))
+                    conn.execute(
+                        "UPDATE clip SET final_path = ?, final_params = ? WHERE id = ?",
+                        (str(seg), fingerprint, m["clip_id"]),
+                    )
             else:
                 seg = Path(m["final_path"])
             segments.append(seg)

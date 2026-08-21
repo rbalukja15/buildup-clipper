@@ -23,6 +23,9 @@ def download_cmd(url: str, out_stem: Path, settings: Settings, max_height: int =
         "-f", f"bv*[height<={max_height}]+ba/b[height<={max_height}]/bv*+ba/b",
         "--merge-output-format", "mp4",
         "-o", f"{out_stem}.%(ext)s",
+        # Everything after -- is a URL, never an option: without it a source_url
+        # beginning with a dash is read by yt-dlp as a flag.
+        "--",
         url,
     ]
 

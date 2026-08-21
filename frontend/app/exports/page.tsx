@@ -14,6 +14,7 @@ export default function ExportsPage() {
   const [detail] = useLiveData<ExportRow | null>(
     () => (open ? api.export(open) : Promise.resolve(null)),
     null,
+    [open],
   );
   const [error, setError] = useState<string | null>(null);
 

@@ -61,12 +61,20 @@ class JobQueue:
         self._subscribers: set[asyncio.Queue[dict]] = set()
         self._jobs: dict[int, Job] = {}
         self._worker: asyncio.Task | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._next_id = 1
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
-        if self._worker is not None and not self._worker.done():
+        loop = asyncio.get_running_loop()
+        if self._worker is not None and not self._worker.done() and self._loop is loop:
             return
+        if self._worker is not None and self._loop is not loop:
+            # Left over from a previous run of the app in this process. It
+            # belongs to a loop that is gone, so it cannot be awaited -- drop it
+            # rather than adopting a worker that will never run again.
+            self._worker.cancel()
+        self._loop = loop
         self._queue = asyncio.Queue()
         self._subscribers = set()
         self._jobs = {}
@@ -74,11 +82,12 @@ class JobQueue:
         self._worker = asyncio.create_task(self._run(), name="buc-worker")
 
     async def stop(self) -> None:
-        if self._worker is not None:
-            self._worker.cancel()
+        worker, self._worker = self._worker, None
+        if worker is not None and not worker.done() and self._loop is asyncio.get_running_loop():
+            worker.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await self._worker
-            self._worker = None
+                await worker
+        self._loop = None
         self._queue = None
         self._subscribers = set()
 

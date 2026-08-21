@@ -26,7 +26,7 @@ function ReviewGrid() {
   const { refresh } = useLive();
 
   const [matches] = useLiveData<Match[]>(() => api.matches(), []);
-  const [clips, setClips] = useLiveData<Clip[]>(() => api.clips({ matchId }), []);
+  const [clips, setClips] = useLiveData<Clip[]>(() => api.clips({ matchId }), [], [matchId]);
   const [filter, setFilter] = useState<Filter>("all");
   const [dragId, setDragId] = useState<number | null>(null);
   const [cursor, setCursor] = useState(0);
@@ -86,6 +86,9 @@ function ReviewGrid() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return; // never hijack browser/OS chords (Cmd+U, Ctrl+A, ...)
+      }
       const clip = visible[cursor];
       if (event.key === "ArrowRight") setCursor((c) => Math.min(c + 1, visible.length - 1));
       else if (event.key === "ArrowLeft") setCursor((c) => Math.max(c - 1, 0));

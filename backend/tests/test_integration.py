@@ -169,3 +169,47 @@ def test_segments_from_different_sources_concat_without_a_glitch(live_client, ma
     assert (final["width"], final["height"]) == (1280, 720), "the 4:3 source is padded, not stretched"
     assert final["duration"] == pytest.approx(12.0, abs=0.2)
     assert final["packets"] == pytest.approx(360, abs=4), "no dropped or duplicated frames at the join"
+
+
+def test_changing_export_settings_produces_a_uniform_file(live_client, match_video, monkeypatch):
+    """The dangerous case: segments encoded under old settings, concat-copied
+    together with new ones. ffmpeg exits 0 and the header lies about half the
+    frames, so this has to be checked on real output, not on a mock."""
+    from app import config
+
+    match_id = live_client.post("/api/matches", json={
+        "title": "Settings change", "source_type": "file", "file_path": str(match_video)}).json()["id"]
+    wait_for_jobs(live_client, timeout=180)
+
+    clip_ids = []
+    for window in ((3.0, 7.0), (20.0, 24.0)):
+        tag = live_client.post(f"/api/matches/{match_id}/tags",
+                               json={"t_start": window[0], "t_end": window[1]}).json()
+        clip_ids.append(tag["clip_id"])
+    wait_for_jobs(live_client, timeout=180)
+    for clip_id in clip_ids:
+        live_client.patch(f"/api/clips/{clip_id}", json={"status": "approved"})
+
+    export = live_client.post("/api/exports",
+                              json={"name": "settings", "match_id": match_id}).json()
+    wait_for_jobs(live_client, timeout=300)
+    first = probe(Path(live_client.get(f"/api/exports/{export['id']}").json()["file_path"]))
+    assert (first["width"], first["height"], first["fps"]) == (1280, 720, 30)
+
+    # The analyst re-renders at a different size, as docs/handoff.md invites.
+    monkeypatch.setenv("BUC_EXPORT_WIDTH", "640")
+    monkeypatch.setenv("BUC_EXPORT_HEIGHT", "360")
+    monkeypatch.setenv("BUC_EXPORT_FPS", "25")
+    config.reset_settings()
+
+    live_client.post(f"/api/exports/{export['id']}/rerender")
+    wait_for_jobs(live_client, timeout=300)
+
+    row = live_client.get(f"/api/exports/{export['id']}").json()
+    assert row["state"] == "ready", row["error"]
+    second = probe(Path(row["file_path"]))
+    assert (second["width"], second["height"]) == (640, 360), "stale 720p segments were reused"
+    assert second["fps"] == 25
+    assert second["duration"] == pytest.approx(8.0, abs=0.15)
+    # 8s at 25fps: proves every frame came from the new encode, not a mix.
+    assert second["packets"] == pytest.approx(200, abs=3)

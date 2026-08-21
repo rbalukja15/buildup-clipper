@@ -35,7 +35,12 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
 
     const connect = () => {
       source = new EventSource(`${API_BASE}/api/events`);
-      source.onopen = () => setConnected(true);
+      source.onopen = () => {
+        setConnected(true);
+        // Anything that changed while the stream was down was published into a
+        // dead queue -- the backend keeps no backlog -- so resync on connect.
+        bump();
+      };
       source.onmessage = (event) => {
         const payload = JSON.parse(event.data);
         if (payload.type === "hello") setJobs(payload.jobs ?? []);
@@ -70,10 +75,20 @@ export const useLive = () => useContext(LiveContext);
 
 export const activeJobs = (jobs: Job[]) => jobs.filter((j) => j.state === "queued" || j.state === "running");
 
-/** Re-runs `load` on mount and whenever the backend reports a change. */
+/**
+ * Re-runs `load` on mount, whenever the backend reports a change, and whenever
+ * `deps` change.
+ *
+ * `deps` is not optional in practice: a loader that closes over state or a
+ * search param (a match id, an expanded row) must list it, or the page keeps
+ * showing the previous match's data. Client-side navigation between two search
+ * params of the same route does not remount the component, so nothing else
+ * would trigger the refetch.
+ */
 export function useLiveData<T>(
   load: () => Promise<T>,
   initial: T,
+  deps: unknown[] = [],
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
   const { revision } = useLive();
   const [data, setData] = useState<T>(initial);
@@ -88,7 +103,8 @@ export function useLiveData<T>(
     return () => {
       cancelled = true;
     };
-  }, [revision]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision, ...deps]);
 
   return [data, setData];
 }

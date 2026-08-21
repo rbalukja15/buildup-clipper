@@ -81,11 +81,23 @@ async def create_export(payload: ExportCreate) -> dict:
         if missing:
             raise HTTPException(status_code=400, detail=f"unknown clip ids: {missing}")
 
-        export_id = int(conn.execute("INSERT INTO export (name) VALUES (?)", (payload.name,)).lastrowid)
-        conn.executemany(
-            "INSERT INTO export_clip (export_id, clip_id, position) VALUES (?, ?, ?)",
-            [(export_id, clip_id, position) for position, clip_id in enumerate(clip_ids)],
-        )
+        # export_clip is keyed (export_id, clip_id), so a repeated id would
+        # abort the member insert half way through.
+        clip_ids = list(dict.fromkeys(clip_ids))
+
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            export_id = int(conn.execute(
+                "INSERT INTO export (name) VALUES (?)", (payload.name,)
+            ).lastrowid)
+            conn.executemany(
+                "INSERT INTO export_clip (export_id, clip_id, position) VALUES (?, ?, ?)",
+                [(export_id, clip_id, position) for position, clip_id in enumerate(clip_ids)],
+            )
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("COMMIT")
 
     await enqueue_export(export_id, payload.name)
     await notify("export", export_id)

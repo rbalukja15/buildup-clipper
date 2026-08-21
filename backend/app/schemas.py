@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -18,8 +19,13 @@ class MatchCreate(BaseModel):
 
     @model_validator(mode="after")
     def _check_source(self) -> "MatchCreate":
-        if self.source_type == "youtube" and not (self.source_url or "").strip():
-            raise ValueError("source_url is required for a youtube source")
+        if self.source_type == "youtube":
+            url = (self.source_url or "").strip()
+            if not url:
+                raise ValueError("source_url is required for a youtube source")
+            if urlparse(url).scheme not in ("http", "https"):
+                raise ValueError("source_url must be an http(s) URL")
+            self.source_url = url
         if self.source_type == "file" and not (self.file_path or "").strip():
             raise ValueError("file_path is required for a file source")
         return self
@@ -38,6 +44,8 @@ class TagCreate(BaseModel):
     def _check_window(self) -> "TagCreate":
         if self.t is None and (self.t_start is None or self.t_end is None):
             raise ValueError("provide either t, or both t_start and t_end")
+        if (self.t_start is None) != (self.t_end is None):
+            raise ValueError("t_start and t_end must be given together")
         if self.t_start is not None and self.t_end is not None and self.t_end <= self.t_start:
             raise ValueError("t_end must be greater than t_start")
         return self

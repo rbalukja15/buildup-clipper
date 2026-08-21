@@ -12,7 +12,7 @@ from starlette.requests import Request
 
 from ..config import get_settings
 from ..db import connect
-from ..pipeline import _is_within
+from ..paths import is_within
 from ..ranged import serve_media
 
 router = APIRouter(prefix="/api/media", tags=["media"])
@@ -23,7 +23,7 @@ def _guard(path_str: str | None, what: str) -> Path:
         raise HTTPException(status_code=409, detail=f"{what} is not rendered yet")
     path = Path(path_str)
     settings = get_settings()
-    if not any(_is_within(path.resolve(), root) for root in settings.media_roots()):
+    if not any(is_within(path, root) for root in settings.media_roots()):
         raise HTTPException(status_code=403, detail="path outside the media directory")
     return path
 

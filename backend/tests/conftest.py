@@ -18,9 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    from fastapi.testclient import TestClient
-
+def fake_media(tmp_path, monkeypatch):
+    """Point the app at a temp data dir and stub out every media binary."""
     monkeypatch.setenv("BUC_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.delenv("BUC_FRONTEND_DIR", raising=False)
 
@@ -49,12 +48,19 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(ffmpeg, "probe", fake_probe)
     monkeypatch.setattr(ytdlp, "download", fake_download)
 
+    yield
+
+    config.reset_settings()
+
+
+@pytest.fixture
+def client(fake_media):
+    from fastapi.testclient import TestClient
+
     from app.main import app
 
     with TestClient(app) as c:
         yield c
-
-    config.reset_settings()
 
 
 @pytest.fixture

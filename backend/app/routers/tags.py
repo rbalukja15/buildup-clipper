@@ -93,6 +93,12 @@ async def update_tag(tag_id: int, payload: TagUpdate) -> dict:
     # Tags are the source of truth: a moved window invalidates the derived clip.
     if window_moved and current["clip_id"]:
         invalidate_clip(current["clip_id"])
+        # The verdict was about the old cut. Approving a clip and then trimming
+        # it must not ship the untrimmed decision -- and a clip rejected for a
+        # bad cut deserves a fresh look once the cut is fixed. (Deliberately
+        # not inside invalidate_clip: a plain re-render keeps its verdict.)
+        with connect() as conn:
+            conn.execute("UPDATE clip SET status = 'pending' WHERE id = ?", (current["clip_id"],))
         await enqueue_clip_render(current["clip_id"], f"clip {current['clip_id']}")
     await notify("tag", tag_id)
     return _tag(tag_id)

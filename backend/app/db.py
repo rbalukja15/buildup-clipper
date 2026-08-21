@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS clip (
     order_index  INTEGER NOT NULL DEFAULT 0,
     review_path  TEXT,
     final_path   TEXT,
+    final_params TEXT,           -- encode settings the final segment was made with
     render_state TEXT NOT NULL DEFAULT 'pending'
                  CHECK (render_state IN ('pending', 'rendering', 'ready', 'failed')),
     render_error TEXT
@@ -109,15 +110,30 @@ def tx() -> Iterator[sqlite3.Connection]:
         conn.execute("COMMIT")
 
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS will not
+# add them to an existing database, so they are applied explicitly.
+MIGRATIONS: list[tuple[str, str, str]] = [
+    ("clip", "final_params", "ALTER TABLE clip ADD COLUMN final_params TEXT"),
+]
+
+
 def init_db() -> None:
     settings = get_settings()
     settings.ensure_dirs()
     conn = _connect_path(settings.db_path)
     try:
         conn.executescript(SCHEMA)
+        _migrate(conn)
     finally:
         conn.close()
     _recover_interrupted()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, statement in MIGRATIONS:
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(statement)
 
 
 def _recover_interrupted() -> None:
