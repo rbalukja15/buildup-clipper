@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
+import os
 import re
 import shutil
+import sys
 from pathlib import Path
 
 from ..config import Settings, get_settings
@@ -12,11 +15,46 @@ from .ffmpeg import MediaError, ProgressCb
 _PCT = re.compile(r"\[download\]\s+(\d{1,3}(?:\.\d+)?)%")
 
 
+def resolve_ytdlp(settings: Settings) -> list[str]:
+    """How to invoke yt-dlp, as an argv prefix.
+
+    A bare PATH lookup is not enough: the documented dev command runs the
+    interpreter straight out of the virtualenv (`./.venv/bin/uvicorn ...`)
+    without activating it, so a pip-installed yt-dlp sits in the venv's bin
+    directory while PATH knows nothing about it. Checked in order:
+
+      1. BUC_YTDLP, if the user pointed it somewhere explicitly
+      2. the console script beside the running interpreter (the venv case)
+      3. PATH (the Docker image, and system-wide installs)
+      4. the module inside this interpreter, run as `python -m yt_dlp`
+    """
+    configured = settings.ytdlp
+    if configured != "yt-dlp":                      # explicitly overridden
+        return [configured]
+
+    script = Path(sys.executable).parent / ("yt-dlp.exe" if os.name == "nt" else "yt-dlp")
+    if script.is_file():
+        return [str(script)]
+
+    on_path = shutil.which(configured)
+    if on_path:
+        return [on_path]
+
+    if importlib.util.find_spec("yt_dlp") is not None:
+        return [sys.executable, "-m", "yt_dlp"]
+
+    raise MediaError(
+        "yt-dlp was not found. Install it into the same environment as the app "
+        "(`pip install -U yt-dlp`), or set BUC_YTDLP to its path. Local file "
+        "sources do not need it."
+    )
+
+
 def download_cmd(url: str, out_stem: Path, settings: Settings, max_height: int = 1080) -> list[str]:
     """Prefer a single mp4 at <=1080p; the proxy is what gets watched anyway,
     so there is no point pulling 4K over a hotel wifi."""
     return [
-        settings.ytdlp,
+        *resolve_ytdlp(settings),
         "--no-playlist",
         "--newline",
         "--no-part",
@@ -38,17 +76,13 @@ def parse_percent(line: str) -> float | None:
 async def download(url: str, out_stem: Path, on_progress: ProgressCb = None,
                    settings: Settings | None = None) -> Path:
     settings = settings or get_settings()
-    if shutil.which(settings.ytdlp) is None and not Path(settings.ytdlp).exists():
-        raise MediaError(
-            f"'{settings.ytdlp}' not found on PATH. Install yt-dlp, or use a local "
-            f"file source instead of a YouTube URL."
-        )
+    cmd = download_cmd(url, out_stem, settings)   # raises MediaError if absent
     out_stem.parent.mkdir(parents=True, exist_ok=True)
     for stale in out_stem.parent.glob(f"{out_stem.name}.*"):
         stale.unlink()
 
     proc = await asyncio.create_subprocess_exec(
-        *download_cmd(url, out_stem, settings),
+        *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )

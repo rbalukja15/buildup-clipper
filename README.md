@@ -175,7 +175,12 @@ without dropping frames.
 
 ## Keeping YouTube ingest working
 
-`yt-dlp` is deliberately **not** pinned (`yt-dlp>=…` in `backend/requirements.txt`).
+`yt-dlp` is installed by `requirements.txt`, so it lands in the same virtualenv
+as the app and is found there automatically — the dev command runs the venv's
+interpreter without activating it, so a PATH lookup alone would miss it. Point
+`BUC_YTDLP` at a specific binary to override.
+
+It is deliberately **not** pinned (`yt-dlp>=…` in `backend/requirements.txt`).
 YouTube changes its player regularly and an aging yt-dlp stops being able to
 extract video — the symptom is an ingest that fails with "Failed to extract any
 player response". The fix is always the same: get a newer yt-dlp.

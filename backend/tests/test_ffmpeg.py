@@ -127,3 +127,50 @@ def test_ytdlp_caps_resolution_and_forces_mp4(tmp_path):
     assert cmd[cmd.index("--merge-output-format") + 1] == "mp4"
     assert "height<=1080" in cmd[cmd.index("-f") + 1]
     assert cmd[cmd.index("-o") + 1].endswith("match_1.%(ext)s")
+
+
+# --------------------------------------------------------------------------- #
+# finding yt-dlp -- the documented dev command runs the venv interpreter
+# directly, so PATH alone does not find a pip-installed yt-dlp
+# --------------------------------------------------------------------------- #
+
+def test_ytdlp_is_found_beside_the_running_interpreter(tmp_path, monkeypatch):
+    """The venv case: `./.venv/bin/uvicorn app.main:app` never puts the venv's
+    bin directory on PATH."""
+    import sys
+
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "yt-dlp").write_text("#!/bin/sh\n")
+    (venv_bin / "python").write_text("")
+
+    monkeypatch.setattr(sys, "executable", str(venv_bin / "python"))
+    monkeypatch.setattr(ytdlp.shutil, "which", lambda _name: None)   # nothing on PATH
+
+    assert ytdlp.resolve_ytdlp(Settings(data_dir=tmp_path)) == [str(venv_bin / "yt-dlp")]
+
+
+def test_an_explicit_override_wins(tmp_path):
+    settings = Settings(data_dir=tmp_path, ytdlp="/opt/tools/yt-dlp")
+    assert ytdlp.resolve_ytdlp(settings) == ["/opt/tools/yt-dlp"]
+
+
+def test_falls_back_to_the_module_in_this_interpreter(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python"))
+    monkeypatch.setattr(ytdlp.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(ytdlp.importlib.util, "find_spec", lambda _name: object())
+
+    assert ytdlp.resolve_ytdlp(Settings(data_dir=tmp_path)) == [sys.executable, "-m", "yt_dlp"]
+
+
+def test_a_missing_ytdlp_says_what_to_do(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "python"))
+    monkeypatch.setattr(ytdlp.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(ytdlp.importlib.util, "find_spec", lambda _name: None)
+
+    with pytest.raises(ffmpeg.MediaError, match="pip install"):
+        ytdlp.resolve_ytdlp(Settings(data_dir=tmp_path))
