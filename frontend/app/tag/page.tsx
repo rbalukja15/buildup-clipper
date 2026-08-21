@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { api, ApiError, proxyUrl } from "@/lib/api";
 import { useLive, useLiveData } from "@/lib/live";
 import { timecode } from "@/lib/format";
-import type { Match, Tag } from "@/lib/types";
+import type { Health, Match, Tag } from "@/lib/types";
 import { Toast } from "@/components/Toast";
 
 const RATES = [1, 1.25, 1.5, 2];
@@ -26,6 +26,9 @@ function TagStudio() {
   const { refresh } = useLive();
 
   const [matches] = useLiveData<Match[]>(() => api.matches(), []);
+  // The padding is env-configurable and the baseline page tells the analyst
+  // when to change it, so the legend has to read it rather than claim it.
+  const [health] = useLiveData<Health | null>(() => api.health(), null);
   const [match] = useLiveData<Match | null>(
     () => (matchId ? api.match(matchId) : Promise.resolve(null)),
     null,
@@ -76,8 +79,8 @@ function TagStudio() {
     if (!matchId) return;
     flash("G");
     try {
-      // The window (t-3s / t+27s) is applied server-side so every producer --
-      // hotkey today, detection later -- gets the same padding.
+      // The padding around t is applied server-side so every producer --
+      // hotkey today, detection later -- gets the same window.
       const tag = await api.createTag(matchId, { t: video.current?.currentTime ?? 0 });
       setTags((current) => [...current, tag].sort((a, b) => a.t_start - b.t_start));
       setActiveTagId(tag.id);
@@ -334,7 +337,11 @@ function TagStudio() {
           <span className="legend-item">
             <span className="key">↵</span> jump to active tag
           </span>
-          <span className="legend-item dim">Tags apply −3s / +27s around the keystroke.</span>
+          <span className="legend-item dim">
+            {health
+              ? `Tags apply −${health.tag_padding[0]}s / +${health.tag_padding[1]}s around the keystroke.`
+              : "Tags apply a fixed window around the keystroke."}
+          </span>
         </div>
       </div>
 

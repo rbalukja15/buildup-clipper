@@ -1,4 +1,4 @@
-import type { Clip, ExportRow, Job, Match, Tag } from "./types";
+import type { Clip, ExportRow, Health, Job, Match, MatchStats, Tag } from "./types";
 
 /** Empty in the packaged build (FastAPI serves the UI); the dev server points
  *  at uvicorn on :8000 via .env.development. */
@@ -33,10 +33,12 @@ const post = <T,>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const api = {
+  health: () => request<Health>("/api/health"),
   matches: () => request<Match[]>("/api/matches"),
   match: (id: number) => request<Match>(`/api/matches/${id}`),
   createMatch: (body: Record<string, unknown>) => post<Match>("/api/matches", body),
   reingest: (id: number) => post<{ ok: true }>(`/api/matches/${id}/reingest`),
+  matchStats: (id: number) => request<MatchStats>(`/api/matches/${id}/stats`),
   deleteMatch: (id: number) => request<void>(`/api/matches/${id}`, { method: "DELETE" }),
 
   tags: (matchId: number) => request<Tag[]>(`/api/matches/${matchId}/tags`),

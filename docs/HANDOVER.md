@@ -20,9 +20,9 @@ Nobody has used it on real footage yet. That is the single most important gap.
 | M1 ingest + proxy + tagging player | done |
 | M2 clip generation + review grid | done |
 | M3 export pipeline | pipeline done and verified on synthetic footage; **the acceptance test against the analyst's real sample deliverable has not been run** |
-| M4 dockerize + install + baseline | image builds and runs; **not installed on the analyst's machine, no baseline recorded** |
+| M4 dockerize + install + baseline | image builds and runs; the app measures its own baseline now; **not installed on the analyst's machine, no baseline recorded** |
 
-67 tests: 64 fast (media binaries stubbed) + 3 real-ffmpeg integration tests.
+83 tests: 80 fast (media binaries stubbed) + 3 real-ffmpeg integration tests.
 
 ```bash
 cd backend && ./.venv/bin/python -m pytest -q                              # all
@@ -52,6 +52,12 @@ Not "the code looks right" — these were run:
   between search params — driven with Playwright against the built UI.
 - **Fresh clone** passes all tests and builds the frontend from the committed
   lockfile.
+- **The baseline page against a real render**: a 5-minute synthetic match
+  ingested, nine tags, three `I`/`O` corrections, verdicts, and a real export —
+  the page reported 9 build-ups, 3 nudged (33%), a 27s export render, and the
+  padding its own corrections argued for (−6s/+21s). Setting
+  `BUC_TAG_PAD_BEFORE=6` / `_AFTER=21` and restarting made the tagging legend
+  follow and the suggestion retire itself. Screenshot-verified in Chromium.
 
 ## NOT verified
 
@@ -78,8 +84,9 @@ These are the spec's own open assumptions, and none can be settled without the
 analyst:
 
 1. **Is −3s/+27s the right window?** Tune with `BUC_TAG_PAD_BEFORE` /
-   `BUC_TAG_PAD_AFTER`, no code change. Signal to watch: how often he corrects a
-   cut with `I`/`O`. More than roughly one tag in five means the default is wrong.
+   `BUC_TAG_PAD_AFTER`, no code change. The `/baseline` page now counts the
+   `I`/`O` corrections and, past one tag in five, prints the window his own
+   corrections imply — so this decision needs his footage, not his opinion.
 2. **Are keyframe-snapped review clips good enough?** They can sit ±1–2s off.
    Lower `BUC_PROXY_GOP` for tighter cuts at the cost of a bigger proxy. The
    export is frame-exact either way.
@@ -88,10 +95,16 @@ analyst:
 
 `docs/handoff.md` has the install steps and the baseline table to fill in on the
 day. Recording that baseline is the point of M4 — without it "faster than
-manual" stays a feeling rather than a number.
+manual" stays a feeling rather than a number. The clipper half of that table now
+comes out of the app (**NUM** in the rail → *Copy handoff table*); the manual
+half is still a stopwatch, and nobody but the analyst can produce it.
 
 ## Architecture, briefly
 
+- **Measurement** `app/stats.py` turns the rows into the M4 numbers. It reads
+  columns written for no other purpose (`tag.t_marked`, `tag.adjust_count`,
+  `clip.reviewed_at`, `export.started_at/finished_at`) — nothing in the pipeline
+  branches on them, so getting them wrong cannot break a render, only a report.
 - **Backend** FastAPI + SQLite (WAL) + ffmpeg + yt-dlp. All long work runs on a
   single in-process async worker (`app/jobs.py`) so two ffmpeg runs never fight
   for a laptop's CPU. Progress streams over SSE at `/api/events`.
@@ -105,6 +118,14 @@ manual" stays a feeling rather than a number.
 
 ### Things worth knowing before you change something
 
+- **Every duration on the baseline page is a span between recorded actions**,
+  not a stopwatch: first tag to last tag, first verdict to last verdict. Idle
+  time inside a span counts and the lead-in does not. If you add a measure,
+  keep that honest — an optimistic number here is worse than no number.
+- **The padding advice is per match and historical.** A match's correction rate
+  reflects the window it was tagged with, so it does not drop when the setting
+  changes; the page only stops suggesting once the current padding already
+  matches what the corrections argue for.
 - **Export segments are cached on disk** and reused across re-renders. They are
   keyed by an encode fingerprint (`pipeline.export_fingerprint`). If you add an
   encoding parameter, add it to that fingerprint or stale segments will be

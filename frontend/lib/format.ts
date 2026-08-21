@@ -17,3 +17,13 @@ export function relativeDate(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
+
+/** A measured span, in the units a stopwatch would have given. */
+export function span(seconds: number | null | undefined): string {
+  if (seconds == null || Number.isNaN(seconds)) return "—";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  return timecode(seconds);
+}
+
+export const percent = (share: number | null | undefined) =>
+  share == null ? "—" : `${Math.round(share * 100)}%`;

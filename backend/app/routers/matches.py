@@ -9,6 +9,7 @@ from ..db import connect
 from ..jobs import notify
 from ..pipeline import _safe_unlink, enqueue_ingest
 from ..schemas import MatchCreate
+from ..stats import match_stats
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 
@@ -64,6 +65,15 @@ async def create_match(payload: MatchCreate) -> dict:
 @router.get("/{match_id}")
 def get_match(match_id: int) -> dict:
     return _match_row(match_id)
+
+
+@router.get("/{match_id}/stats")
+def stats(match_id: int) -> dict:
+    """The M4 baseline numbers for this match -- see app/stats.py."""
+    result = match_stats(match_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="match not found")
+    return result
 
 
 @router.post("/{match_id}/reingest")

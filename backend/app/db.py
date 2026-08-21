@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS tag (
     category   TEXT NOT NULL DEFAULT 'gk_buildup',
     source     TEXT NOT NULL DEFAULT 'manual',
     note       TEXT,
+    t_marked     REAL,          -- the keystroke moment, before padding was applied
+    adjust_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_tag_match ON tag(match_id, t_start);
@@ -55,7 +57,8 @@ CREATE TABLE IF NOT EXISTS clip (
     final_params TEXT,           -- encode settings the final segment was made with
     render_state TEXT NOT NULL DEFAULT 'pending'
                  CHECK (render_state IN ('pending', 'rendering', 'ready', 'failed')),
-    render_error TEXT
+    render_error TEXT,
+    reviewed_at  TEXT            -- when the analyst last passed a verdict on it
 );
 CREATE INDEX IF NOT EXISTS idx_clip_tag ON clip(tag_id);
 
@@ -66,6 +69,8 @@ CREATE TABLE IF NOT EXISTS export (
     state        TEXT NOT NULL DEFAULT 'pending'
                  CHECK (state IN ('pending', 'rendering', 'ready', 'failed')),
     error        TEXT,
+    started_at   TEXT,
+    finished_at  TEXT,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -114,6 +119,13 @@ def tx() -> Iterator[sqlite3.Connection]:
 # add them to an existing database, so they are applied explicitly.
 MIGRATIONS: list[tuple[str, str, str]] = [
     ("clip", "final_params", "ALTER TABLE clip ADD COLUMN final_params TEXT"),
+    # Measurement columns (see app/stats.py). Old rows keep NULL/0 and are
+    # simply absent from the stats that need them.
+    ("tag", "t_marked", "ALTER TABLE tag ADD COLUMN t_marked REAL"),
+    ("tag", "adjust_count", "ALTER TABLE tag ADD COLUMN adjust_count INTEGER NOT NULL DEFAULT 0"),
+    ("clip", "reviewed_at", "ALTER TABLE clip ADD COLUMN reviewed_at TEXT"),
+    ("export", "started_at", "ALTER TABLE export ADD COLUMN started_at TEXT"),
+    ("export", "finished_at", "ALTER TABLE export ADD COLUMN finished_at TEXT"),
 ]
 
 

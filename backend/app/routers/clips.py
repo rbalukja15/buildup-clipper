@@ -53,7 +53,13 @@ async def update_clip(clip_id: int, payload: ClipUpdate) -> dict:
     clip = _clip(clip_id)
     with connect() as conn:
         if payload.status is not None:
-            conn.execute("UPDATE clip SET status = ? WHERE id = ?", (payload.status, clip_id))
+            # reviewed_at times the review pass. A verdict taken back clears it
+            # again, so undoing a decision does not stretch the measured span.
+            stamp = "NULL" if payload.status == "pending" else "datetime('now')"
+            conn.execute(
+                f"UPDATE clip SET status = ?, reviewed_at = {stamp} WHERE id = ?",
+                (payload.status, clip_id),
+            )
         if payload.note is not None:
             # The note lives on the tag -- one source of truth, survives re-render.
             conn.execute("UPDATE tag SET note = ? WHERE id = ?", (payload.note, clip["tag_id"]))

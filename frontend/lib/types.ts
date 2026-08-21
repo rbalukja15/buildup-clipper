@@ -75,3 +75,47 @@ export interface Job {
   error: string | null;
   created_at: number;
 }
+
+/** GET /api/matches/:id/stats -- the M4 baseline numbers (backend app/stats.py). */
+export interface MatchStats {
+  match_id: number;
+  title: string;
+  duration_s: number | null;
+  tags: {
+    total: number;
+    adjusted: number;
+    corrections: number;
+    adjusted_share: number | null;
+    median_window_s: number | null;
+    span_s: number | null;
+  };
+  clips: {
+    pending: number;
+    approved: number;
+    rejected: number;
+    failed_renders: number;
+    reviewed: number;
+    span_s: number | null;
+  };
+  padding: {
+    before_s: number;
+    after_s: number;
+    sample: number;
+    corrected_sample: number;
+    corrected_median_before_s: number | null;
+    corrected_median_after_s: number | null;
+    suggested_before_s: number | null;
+    suggested_after_s: number | null;
+    verdict: "fits" | "check" | "unknown";
+  };
+  exports: { count: number; ready: number; last_render_s: number | null; last_name: string | null };
+  totals: { measured_s: number | null; ratio_of_match: number | null };
+}
+
+export interface Health {
+  ok: boolean;
+  data_dir: string;
+  /** [before, after] seconds -- the window the `G` hotkey applies. */
+  tag_padding: [number, number];
+  export: { width: number; height: number; fps: number };
+}

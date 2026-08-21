@@ -10,7 +10,7 @@ open questions, and the traps in this codebase.
 
 ```bash
 # tests (from backend/)
-./.venv/bin/python -m pytest -q                                # all 67
+./.venv/bin/python -m pytest -q                                # all 83
 ./.venv/bin/python -m pytest -q --ignore=tests/test_integration.py   # fast only, no ffmpeg needed
 
 # dev
@@ -28,9 +28,10 @@ Integration tests need real `ffmpeg`/`ffprobe`; the rest stub them out.
 
 - `backend/app/` — `pipeline.py` (job bodies), `jobs.py` (the single async
   worker), `media/` (ffmpeg + yt-dlp wrappers), `routers/`, `paths.py`
-  (path containment — the only implementation, use it)
+  (path containment — the only implementation, use it), `stats.py` (the M4
+  baseline numbers)
 - `frontend/app/` — `page.tsx` (matches), `tag/` (player), `review/` (grid),
-  `exports/`; `lib/live.tsx` holds the SSE plumbing
+  `exports/`, `baseline/` (the numbers); `lib/live.tsx` holds the SSE plumbing
 - `docs/handoff.md` — install steps and the M4 baseline table
 
 ## Conventions
@@ -43,3 +44,5 @@ Integration tests need real `ffmpeg`/`ffprobe`; the rest stub them out.
   the **original** source — never the proxy.
 - Comments explain why, not what. Match the surrounding density.
 - Tests are named as the behaviour they protect, not `test_function_name`.
+- Measurement columns are write-only for the pipeline: read them in `stats.py`,
+  never branch a render on them.

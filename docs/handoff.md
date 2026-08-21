@@ -19,7 +19,11 @@ yt-dlp when a YouTube URL is used.
 
 ## Baseline run
 
-Run one real match **side by side** with the current manual process, and record:
+Run one real match **side by side** with the current manual process. The clipper
+column fills itself in: open **NUM** in the rail (`/baseline?match=<id>`) once
+the export is done and press *Copy handoff table*, then paste it over the table
+below. The manual column is still a stopwatch — that is the number nobody but
+the analyst has.
 
 | measure | manual | clipper |
 |---------|--------|---------|
@@ -36,12 +40,19 @@ Target: full deliverable in ≤ 1.2× match runtime.
 
 ## What to watch for
 
-- **Padding**: how many tags needed `I`/`O` correction? More than ~1 in 5 means
-  `BUC_TAG_PAD_BEFORE`/`BUC_TAG_PAD_AFTER` are wrong for this footage.
+- **Padding**: the baseline page counts the `I`/`O` corrections. Past ~1 tag in
+  5 it calls the default wrong and prints the `BUC_TAG_PAD_BEFORE` /
+  `BUC_TAG_PAD_AFTER` line the analyst's own corrections argue for. Set it,
+  restart, and judge it on the *next* match — the rate shown for a match is the
+  history of how it was tagged, so it does not fall when the setting changes.
 - **Tagging speed**: which playback rate did the analyst settle on? If it is 1×,
-  the "watch once" premise needs revisiting.
+  the "watch once" premise needs revisiting. Nothing records this — watch him.
 - **Review clips**: was keyframe snapping ever bad enough to mislead a decision?
 - **Output**: does the analyst sign off on the export quality, or does it need a
   higher bitrate (`BUC_EXPORT_CRF`) or resolution (`BUC_EXPORT_HEIGHT`)?
 
 Record the answers here, in this file, on the day. They decide what M5 is.
+
+Two things the page cannot see: the minutes before the first tag (it times the
+first tag to the last, not the sit-down), and anything the analyst does outside
+it. If the day is being timed properly, note the wall clock when he starts.

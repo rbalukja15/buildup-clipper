@@ -478,3 +478,33 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* --- baseline ------------------------------------------------------------- */
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+
+.stat {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat[data-tone="go"] { border-color: rgba(198, 242, 78, 0.35); }
+.stat[data-tone="bad"] { border-color: var(--rust-dim); }
+.stat-value { font-family: var(--display); font-size: 34px; line-height: 1.05; }
+.stat[data-tone="go"] .stat-value { color: var(--lime); }
+.stat[data-tone="bad"] .stat-value { color: var(--rust); }
+
+.code {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+  white-space: pre;
+}

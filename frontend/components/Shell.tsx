@@ -9,6 +9,7 @@ const NAV = [
   { href: "/tag", label: "TAG", title: "Tag" },
   { href: "/review", label: "REV", title: "Review" },
   { href: "/exports", label: "OUT", title: "Exports" },
+  { href: "/baseline", label: "NUM", title: "Baseline" },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {

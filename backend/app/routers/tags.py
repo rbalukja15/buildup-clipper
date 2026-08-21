@@ -39,7 +39,8 @@ async def create_tag(match_id: int, payload: TagCreate) -> dict:
         if match is None:
             raise HTTPException(status_code=404, detail="match not found")
 
-        if payload.t is not None and payload.t_start is None:
+        padded = payload.t is not None and payload.t_start is None
+        if padded:
             t_start = max(payload.t - settings.tag_pad_before_s, 0.0)
             t_end = payload.t + settings.tag_pad_after_s
         else:
@@ -53,9 +54,16 @@ async def create_tag(match_id: int, payload: TagCreate) -> dict:
         # written atomically.
         conn.execute("BEGIN IMMEDIATE")
         try:
+            # t_marked is the raw keystroke moment, kept only when the padding
+            # produced the window. It is what lets the stats say which padding
+            # the analyst actually settled on, rather than only that he
+            # corrected something -- a window supplied whole says nothing about
+            # the padding, so it stores no moment.
             tag_id = int(conn.execute(
-                "INSERT INTO tag (match_id, t_start, t_end, category, source, note) VALUES (?, ?, ?, ?, ?, ?)",
-                (match_id, t_start, t_end, payload.category, payload.source, payload.note),
+                "INSERT INTO tag (match_id, t_start, t_end, category, source, note, t_marked) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (match_id, t_start, t_end, payload.category, payload.source, payload.note,
+                 payload.t if padded else None),
             ).lastrowid)
             next_index = conn.execute(
                 "SELECT COALESCE(MAX(c.order_index), -1) + 1 FROM clip c "
@@ -85,9 +93,12 @@ async def update_tag(tag_id: int, payload: TagUpdate) -> dict:
 
     window_moved = (t_start, t_end) != (current["t_start"], current["t_end"])
     with connect() as conn:
+        # adjust_count counts I/O corrections: the signal for whether the
+        # default padding fits this footage.
         conn.execute(
-            "UPDATE tag SET t_start = ?, t_end = ?, note = ? WHERE id = ?",
-            (t_start, t_end, current["note"] if payload.note is None else payload.note, tag_id),
+            "UPDATE tag SET t_start = ?, t_end = ?, note = ?, adjust_count = adjust_count + ? WHERE id = ?",
+            (t_start, t_end, current["note"] if payload.note is None else payload.note,
+             1 if window_moved else 0, tag_id),
         )
 
     # Tags are the source of truth: a moved window invalidates the derived clip.
@@ -98,7 +109,10 @@ async def update_tag(tag_id: int, payload: TagUpdate) -> dict:
         # bad cut deserves a fresh look once the cut is fixed. (Deliberately
         # not inside invalidate_clip: a plain re-render keeps its verdict.)
         with connect() as conn:
-            conn.execute("UPDATE clip SET status = 'pending' WHERE id = ?", (current["clip_id"],))
+            conn.execute(
+                "UPDATE clip SET status = 'pending', reviewed_at = NULL WHERE id = ?",
+                (current["clip_id"],),
+            )
         await enqueue_clip_render(current["clip_id"], f"clip {current['clip_id']}")
     await notify("tag", tag_id)
     return _tag(tag_id)

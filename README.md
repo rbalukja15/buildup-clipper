@@ -69,6 +69,10 @@ rebuilt.
    to reorder, optional note per clip.
 6. **Export** — approved clips are re-encoded frame-exact with uniform
    parameters and joined into one `.mp4`. That file is the deliverable.
+7. **Baseline** — the numbers the match cost: build-ups found, cuts nudged,
+   how long each pass took, and whether the tag padding fits this footage. The
+   page fills in the table in [`docs/handoff.md`](docs/handoff.md) so "faster
+   than manual" is a measurement rather than a feeling.
 
 ## ffmpeg strategy
 
@@ -88,10 +92,11 @@ have identical stream layouts. To keep audio, remove `-an` from
 ```
 match   (id, title, opponent, date, source_type, source_url, file_path,
          proxy_path, duration_s, fps, ingest_state, ingest_error, created_at)
-tag     (id, match_id, t_start, t_end, category, source, note, created_at)
+tag     (id, match_id, t_start, t_end, category, source, note,
+         t_marked, adjust_count, created_at)
 clip    (id, tag_id, status, order_index, review_path, final_path,
-         render_state, render_error)
-export  (id, name, file_path, state, error, created_at)
+         render_state, render_error, reviewed_at)
+export  (id, name, file_path, state, error, started_at, finished_at, created_at)
 export_clip (export_id, clip_id, position)
 ```
 
@@ -109,6 +114,10 @@ Exports can select clips **across matches** — the running order is
 Two columns are additions to the spec's schema: `match.ingest_state` /
 `ingest_error` and `clip.render_state` / `render_error`. Without them a failed
 download or a missing file is invisible in the UI.
+
+`tag.t_marked` (the raw keystroke moment, before padding), `tag.adjust_count`,
+`clip.reviewed_at` and the export timestamps exist only to be measured. They are
+what the baseline page reads; nothing in the pipeline branches on them.
 
 ## Architecture
 
@@ -141,9 +150,9 @@ All env vars, all optional:
 ```bash
 cd backend
 ./.venv/bin/pip install -r requirements-dev.txt
-./.venv/bin/python -m pytest              # all 47
-./.venv/bin/python -m pytest --ignore=tests/test_integration.py   # 45 fast, ffmpeg stubbed
-./.venv/bin/python -m pytest tests/test_integration.py            # 2 real-ffmpeg, ~30s
+./.venv/bin/python -m pytest              # all 83
+./.venv/bin/python -m pytest --ignore=tests/test_integration.py   # 80 fast, ffmpeg stubbed
+./.venv/bin/python -m pytest tests/test_integration.py            # 3 real-ffmpeg, ~30s
 ```
 
 The fast suite stubs ffmpeg, so it runs anywhere; the encoding strategy itself is
@@ -158,15 +167,18 @@ without dropping frames.
 - **M3** — export pipeline + acceptance test. ✅ (pipeline verified against
   generated footage; the real acceptance test is reproducing the sample
   deliverable from its source footage)
-- **M4** — dockerize ✅, install on the analyst's machine, run one real match
-  side-by-side with the manual process, record the baseline. See
+- **M4** — dockerize ✅, measurement built in ✅ (the `/baseline` page counts
+  what the handoff table asks for), install on the analyst's machine, run one
+  real match side-by-side with the manual process, record the baseline. See
   [`docs/handoff.md`](docs/handoff.md).
 
 ## Assumptions to validate in first real use
 
 1. **The −3s/+27s window fits real GK build-ups.** Change it with
    `BUC_TAG_PAD_BEFORE`/`AFTER` without touching code; if the analyst is
-   constantly hitting `I`/`O`, the default is wrong.
+   constantly hitting `I`/`O`, the default is wrong. The `/baseline` page counts
+   the corrections and, past one tag in five, names the window his own
+   corrections argue for.
 2. **Keyframe-snapped review clips are tolerable.** They can be ±1–2s off. The
    export is frame-exact regardless. If review feels sloppy, lower
    `BUC_PROXY_GOP` (denser keyframes = tighter cuts, bigger proxy).

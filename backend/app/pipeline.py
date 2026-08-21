@@ -230,7 +230,13 @@ async def render_export(job: Job) -> None:
 
     try:
         with connect() as conn:
-            conn.execute("UPDATE export SET state = 'rendering', error = NULL WHERE id = ?", (export_id,))
+            # started_at/finished_at time the join itself. A re-render restamps
+            # both: the number worth reporting is the last run, not the first.
+            conn.execute(
+                "UPDATE export SET state = 'rendering', error = NULL, "
+                "started_at = datetime('now'), finished_at = NULL WHERE id = ?",
+                (export_id,),
+            )
         await notify("export", export_id)
 
         if not members:
@@ -284,13 +290,17 @@ async def render_export(job: Job) -> None:
 
         with connect() as conn:
             conn.execute(
-                "UPDATE export SET file_path = ?, state = 'ready', error = NULL WHERE id = ?",
+                "UPDATE export SET file_path = ?, state = 'ready', error = NULL, "
+                "finished_at = datetime('now') WHERE id = ?",
                 (str(out), export_id),
             )
         await notify("export", export_id)
     except Exception as exc:  # noqa: BLE001
         with connect() as conn:
-            conn.execute("UPDATE export SET state = 'failed', error = ? WHERE id = ?", (str(exc), export_id))
+            conn.execute(
+                "UPDATE export SET state = 'failed', error = ?, finished_at = datetime('now') WHERE id = ?",
+                (str(exc), export_id),
+            )
         await notify("export", export_id)
         raise
 
